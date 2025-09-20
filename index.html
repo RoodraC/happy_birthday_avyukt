@@ -1,111 +1,105 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>Meta-Level Mobile VR</title>
-  <!-- WebXR polyfill for broad browser support -->
-  <script src="https://unpkg.com/webxr-polyfill@latest/build/webxr-polyfill.min.js"></script>
-  <!-- A-Frame core library -->
-  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-  <script>
-    // Force immersive-VR and request motion permissions
-    AFRAME.registerComponent('init-vr', {
-      init: function () {
-        this.el.setAttribute('xrweb', 'requiredFeatures: immersive-vr');
-        // Request motion/orientation permissions on iOS/Android Chrome
-        if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
-          DeviceMotionEvent.requestPermission().catch(() => {
-            alert('Please enable Motion & Orientation permissions in your browser settings.');
-          });
+  <head>
+    <meta charset="utf-8">
+    <title>Passthrough VR</title>
+    <script src="https://unpkg.com/webxr-polyfill@latest/build/webxr-polyfill.min.js"></script>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script>
+      // Initialize camera feed
+      async function initVideo() {
+        const video = document.getElementById('camVideo');
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          video.srcObject = stream;
+          await video.play();
+        } catch (err) {
+          alert('Camera access denied or unavailable.');
         }
       }
-    });
-    // Teleportation on gaze after 1s
-    AFRAME.registerComponent('teleport-on-gaze', {
-      init: function () { this.timer = 0; },
-      tick: function (time, delta) {
-        const cam = document.querySelector('[camera]');
-        const intersects = cam.components.raycaster.intersectedEls;
-        if (intersects.includes(this.el)) {
-          this.timer += delta;
-          if (this.timer > 1000) {
-            cam.object3D.position.copy(this.el.object3D.position);
-            this.timer = 0;
-          }
-        } else this.timer = 0;
-      }
-    });
-  </script>
-</head>
-<body>
-  <a-scene init-vr
-           embedded
-           vr-mode-ui="enabled: true"
-           renderer="colorManagement: true; antialias: true"
-           cursor="rayOrigin: mouse"
-           raycaster="objects: .interactive, .target, .teleport-point">
-    <!-- Environment -->
-    <a-sky color="#ECECEC"></a-sky>
-    <a-plane rotation="-90 0 0" width="20" height="20" color="#7BC8A4"></a-plane>
+      // Register components after video starts
+      AFRAME.registerComponent('init-vr', {
+        init() {
+          this.el.setAttribute('xrweb', 'requiredFeatures: immersive-vr');
+        }
+      });
+      AFRAME.registerComponent('teleport-on-gaze', {
+        init() { this.timer = 0; },
+        tick(time, delta) {
+          const cam = document.querySelector('[camera]');
+          const hits = cam.components.raycaster.intersectedEls;
+          if (hits.includes(this.el)) {
+            this.timer += delta;
+            if (this.timer > 1000) {
+              cam.object3D.position.copy(this.el.object3D.position);
+              this.timer = 0;
+            }
+          } else this.timer = 0;
+        }
+      });
+      window.addEventListener('load', initVideo);
+    </script>
+    <style>
+      /* Hide the video element */
+      #camVideo { display: none; }
+    </style>
+  </head>
+  <body>
+    <!-- Hidden video capturing camera -->
+    <video id="camVideo" playsinline muted></video>
+    <a-scene init-vr
+             embedded
+             vr-mode-ui="enabled: true"
+             renderer="antialias: true; colorManagement: true"
+             background="color: black"
+             cursor="rayOrigin: mouse"
+             raycaster="objects: .interactive, .target, .teleport-point">
 
-    <!-- Teleport Points -->
-    <a-ring class="teleport-point"
-            position="2 0.1 -3"
-            radius-inner="0.2"
-            radius-outer="0.3"
-            color="#EF2D5E"
-            teleport-on-gaze></a-ring>
-    <a-ring class="teleport-point"
-            position="-2 0.1 -3"
-            radius-inner="0.2"
-            radius-outer="0.3"
-            color="#4CC3D9"
-            teleport-on-gaze></a-ring>
-
-    <!-- Grabbable Box -->
-    <a-box class="interactive"
-           position="0 0.5 -2"
-           depth="0.5" height="0.5" width="0.5"
-           color="#FFC65D"
-           event-set__enter="_event: mouseenter; scale: 1.2 1.2 1.2"
-           event-set__leave="_event: mouseleave; scale: 1 1 1"
-           animation__click="property: position; to: 0 1.5 -2; startEvents: click; dur: 300">
-    </a-box>
-
-    <!-- Shooting Targets -->
-    <a-sphere class="target"
-              position="1 1.25 -4"
-              radius="0.25"
-              color="#EF2D5E"
-              event-set__enter="_event: mouseenter; color: #FF0000"
-              event-set__leave="_event: mouseleave; color: #EF2D5E"
-              animation__click="property: scale; to: 0 0 0; startEvents: click; dur: 200">
-    </a-sphere>
-    <a-sphere class="target"
-              position="-1 1.25 -4"
-              radius="0.25"
-              color="#4CC3D9"
-              event-set__enter="_event: mouseenter; color: #0000FF"
-              event-set__leave="_event: mouseleave; color: #4CC3D9"
-              animation__click="property: scale; to: 0 0 0; startEvents: click; dur: 200">
-    </a-sphere>
-
-    <!-- Spatial Audio Zone -->
-    <a-entity position="0 0 -6"
-              geometry="primitive: sphere; radius: 1.5"
-              sound="src: url(https://cdn.aframe.io/basic-guide/audio/turntable.ogg);
-                     positional: true; autoplay: false"
-              event-set__enter="_event: raycaster-intersected; _target: #audio; sound.play: true">
-    </a-entity>
-
-    <!-- Camera + Cursor -->
-    <a-entity camera look-controls>
-      <a-entity cursor="fuse: true; fuseTimeout: 500"
-                position="0 0 -0.5"
-                geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.02"
-                material="shader: flat; color: white">
+      <!-- Passthrough background -->
+      <a-entity id="passthrough"
+                geometry="primitive: sphere; radius: 100"
+                material="shader: flat; src: #camVideo; side: back">
       </a-entity>
-    </a-entity>
-  </a-scene>
-</body>
+
+      <!-- Teleport Points -->
+      <a-ring class="teleport-point" position="2 0.1 -3" radius-inner="0.2" radius-outer="0.3" color="#EF2D5E" teleport-on-gaze></a-ring>
+      <a-ring class="teleport-point" position="-2 0.1 -3" radius-inner="0.2" radius-outer="0.3" color="#4CC3D9" teleport-on-gaze></a-ring>
+
+      <!-- Interactive Box -->
+      <a-box class="interactive"
+             position="0 0.5 -2" depth="0.5" height="0.5" width="0.5" color="#FFC65D"
+             event-set__enter="_event: mouseenter; scale: 1.2 1.2 1.2"
+             event-set__leave="_event: mouseleave; scale: 1 1 1"
+             animation__click="property: position; to: 0 1.5 -2; startEvents: click; dur: 300">
+      </a-box>
+
+      <!-- Shooting Targets -->
+      <a-sphere class="target" position="1 1.25 -4" radius="0.25" color="#EF2D5E"
+                event-set__enter="_event: mouseenter; color: #FF0000"
+                event-set__leave="_event: mouseleave; color: #EF2D5E"
+                animation__click="property: scale; to: 0 0 0; startEvents: click; dur: 200">
+      </a-sphere>
+      <a-sphere class="target" position="-1 1.25 -4" radius="0.25" color="#4CC3D9"
+                event-set__enter="_event: mouseenter; color: #0000FF"
+                event-set__leave="_event: mouseleave; color: #4CC3D9"
+                animation__click="property: scale; to: 0 0 0; startEvents: click; dur: 200">
+      </a-sphere>
+
+      <!-- Spatial Audio Zone -->
+      <a-entity position="0 0 -6"
+                geometry="primitive: sphere; radius: 1.5"
+                sound="src: url(https://cdn.aframe.io/basic-guide/audio/turntable.ogg); positional: true; autoplay: false"
+                event-set__enter="_event: raycaster-intersected; _target: #passthrough; sound.play: true">
+      </a-entity>
+
+      <!-- Camera + Cursor -->
+      <a-entity camera look-controls>
+        <a-entity cursor="fuse: true; fuseTimeout: 500"
+                  position="0 0 -0.5"
+                  geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.02"
+                  material="shader: flat; color: white">
+        </a-entity>
+      </a-entity>
+    </a-scene>
+  </body>
 </html>
